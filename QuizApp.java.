@@ -4,40 +4,73 @@ import java.awt.event.*;
 import java.sql.*;
 import java.util.*;
 
-public class QuizApp extends JFrame implements Runnable {
+public class QuizApp extends JFrame {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/QuizDB";
     private static final String USER = "root";
     private static final String PASSWORD = "Coolrupesh";
 
-    private JLabel questionLabel;
+    // UI Components
+    private JLabel questionLabel, timerLabel;
     private JRadioButton optionA, optionB, optionC, optionD;
     private ButtonGroup optionsGroup;
-    private JButton submitButton;
+    private JButton submitButton, nextButton;
+    private JPanel buttonPanel;
 
+    // Quiz Data
     private List<Question> questions;
     private int currentIndex = 0;
     private int score = 0;
+    
+    // Timer
+    private Timer timer;
+    private int timeLeft = 30;
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new Thread(new QuizApp()).start());
-        SwingUtilities.invokeLater(() -> new Thread(new QuizApp()).start());
+        SwingUtilities.invokeLater(() -> new QuizApp().setVisible(true));
     }
 
     public QuizApp() {
         setTitle("Java Quiz System");
-        setSize(600, 300);
+        setSize(700, 400);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
+        setLayout(new BorderLayout(10, 10));
+        getContentPane().setBackground(new Color(240, 240, 240));
 
-        questionLabel = new JLabel("Loading...", JLabel.CENTER);
-        questionLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        // Initialize UI Components
+        initComponents();
+        
+        // Load questions
+        fetchQuestions();
+        
+        // Display first question
+        displayQuestion();
+        
+        // Center the window
+        setLocationRelativeTo(null);
+    }
+
+    private void initComponents() {
+        // Question Label
+        questionLabel = new JLabel("Loading questions...", JLabel.CENTER);
+        questionLabel.setFont(new Font("Arial", Font.BOLD, 18));
+        questionLabel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         add(questionLabel, BorderLayout.NORTH);
 
-        JPanel optionsPanel = new JPanel(new GridLayout(4, 1));
-        optionA = new JRadioButton();
-        optionB = new JRadioButton();
-        optionC = new JRadioButton();
-        optionD = new JRadioButton();
+        // Timer Label
+        timerLabel = new JLabel("Time: 30", JLabel.CENTER);
+        timerLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        timerLabel.setForeground(Color.RED);
+        add(timerLabel, BorderLayout.SOUTH);
+
+        // Options Panel
+        JPanel optionsPanel = new JPanel(new GridLayout(4, 1, 10, 10));
+        optionsPanel.setBorder(BorderFactory.createEmptyBorder(10, 50, 10, 50));
+        
+        Font optionFont = new Font("Arial", Font.PLAIN, 16);
+        optionA = createRadioButton("", optionFont);
+        optionB = createRadioButton("", optionFont);
+        optionC = createRadioButton("", optionFont);
+        optionD = createRadioButton("", optionFont);
 
         optionsGroup = new ButtonGroup();
         optionsGroup.add(optionA);
@@ -51,20 +84,38 @@ public class QuizApp extends JFrame implements Runnable {
         optionsPanel.add(optionD);
         add(optionsPanel, BorderLayout.CENTER);
 
+        // Button Panel
+        buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         submitButton = new JButton("Submit");
+        submitButton.setFont(new Font("Arial", Font.BOLD, 14));
         submitButton.addActionListener(e -> checkAnswer());
-        add(submitButton, BorderLayout.SOUTH);
+        
+        nextButton = new JButton("Next");
+        nextButton.setFont(new Font("Arial", Font.BOLD, 14));
+        nextButton.setEnabled(false);
+        nextButton.addActionListener(e -> {
+            currentIndex++;
+            resetTimer();
+            displayQuestion();
+        });
 
-        fetchQuestions();
-        displayQuestion();
-        setVisible(true);
+        buttonPanel.add(submitButton);
+        buttonPanel.add(nextButton);
+        add(buttonPanel, BorderLayout.SOUTH);
+    }
+
+    private JRadioButton createRadioButton(String text, Font font) {
+        JRadioButton button = new JRadioButton(text);
+        button.setFont(font);
+        button.setBackground(new Color(240, 240, 240));
+        return button;
     }
 
     private void fetchQuestions() {
         questions = new ArrayList<>();
         try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASSWORD);
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM questions")) {
+             ResultSet rs = stmt.executeQuery("SELECT * FROM questions ORDER BY RAND() LIMIT 10")) {
 
             while (rs.next()) {
                 questions.add(new Question(
@@ -76,55 +127,124 @@ public class QuizApp extends JFrame implements Runnable {
                     rs.getString("correct_option")
                 ));
             }
-            Collections.shuffle(questions);
-            questions = questions.subList(0, Math.min(10, questions.size()));
 
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "DB Error: " + e.getMessage());
-            System.exit(1);
+            JOptionPane.showMessageDialog(this, 
+                "Database Error: " + e.getMessage(), 
+                "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            questionLabel.setText("Failed to load questions. Please check database connection.");
+            submitButton.setEnabled(false);
         }
     }
 
     private void displayQuestion() {
         if (currentIndex < questions.size()) {
             Question q = questions.get(currentIndex);
-            questionLabel.setText("Q" + (currentIndex + 1) + ": " + q.text);
+            questionLabel.setText("<html><div style='text-align: center;'>Question " + 
+                (currentIndex + 1) + " of " + questions.size() + "<br>" + q.text + "</div></html>");
+            
             optionA.setText("A. " + q.optionA);
             optionB.setText("B. " + q.optionB);
             optionC.setText("C. " + q.optionC);
             optionD.setText("D. " + q.optionD);
+            
             optionsGroup.clearSelection();
+            nextButton.setEnabled(false);
+            submitButton.setEnabled(true);
+            
+            startTimer();
         } else {
-            JOptionPane.showMessageDialog(this, "Quiz Over! Your Score: " + score + "/" + questions.size());
-            dispose();
+            showFinalScore();
         }
     }
 
     private void checkAnswer() {
+        timer.stop();
+        
         Question q = questions.get(currentIndex);
-        String selected = null;
-        if (optionA.isSelected()) selected = "A";
-        else if (optionB.isSelected()) selected = "B";
-        else if (optionC.isSelected()) selected = "C";
-        else if (optionD.isSelected()) selected = "D";
-
-        if (selected != null && selected.equalsIgnoreCase(q.correct)) {
-            score++;
+        String selected = getSelectedOption();
+        
+        if (selected != null) {
+            boolean isCorrect = selected.equalsIgnoreCase(q.correct);
+            if (isCorrect) {
+                score++;
+                showFeedback("Correct!", Color.GREEN);
+            } else {
+                showFeedback("Incorrect! Correct answer was " + q.correct, Color.RED);
+            }
+        } else {
+            showFeedback("No answer selected!", Color.ORANGE);
         }
-        currentIndex++;
-        displayQuestion();
+        
+        submitButton.setEnabled(false);
+        nextButton.setEnabled(true);
     }
 
-    @Override
-    public void run() {
-        new QuizApp();
+    private String getSelectedOption() {
+        if (optionA.isSelected()) return "A";
+        if (optionB.isSelected()) return "B";
+        if (optionC.isSelected()) return "C";
+        if (optionD.isSelected()) return "D";
+        return null;
+    }
+
+    private void showFeedback(String message, Color color) {
+        timerLabel.setText(message);
+        timerLabel.setForeground(color);
+    }
+
+    private void showFinalScore() {
+        JOptionPane.showMessageDialog(this,
+            "Quiz Completed!\nYour Score: " + score + "/" + questions.size(),
+            "Results",
+            JOptionPane.INFORMATION_MESSAGE);
+        dispose();
+    }
+
+    private void startTimer() {
+        timeLeft = 30;
+        timerLabel.setText("Time: " + timeLeft);
+        timerLabel.setForeground(Color.RED);
+        
+        if (timer != null) {
+            timer.stop();
+        }
+        
+        timer = new Timer(1000, e -> {
+            timeLeft--;
+            timerLabel.setText("Time: " + timeLeft);
+            
+            if (timeLeft <= 5) {
+                timerLabel.setForeground(Color.RED.darker());
+            }
+            
+            if (timeLeft <= 0) {
+                timer.stop();
+                checkAnswer();
+            }
+        });
+        timer.start();
+    }
+
+    private void resetTimer() {
+        if (timer != null) {
+            timer.stop();
+        }
+        timerLabel.setText("Time: 30");
+        timerLabel.setForeground(Color.RED);
     }
 
     static class Question {
         String text, optionA, optionB, optionC, optionD, correct;
+        
         Question(String t, String a, String b, String c, String d, String correct) {
-            this.text = t; this.optionA = a; this.optionB = b;
-            this.optionC = c; this.optionD = d; this.correct = correct;
+            this.text = t; 
+            this.optionA = a; 
+            this.optionB = b;
+            this.optionC = c; 
+            this.optionD = d; 
+            this.correct = correct;
         }
     }
 }
