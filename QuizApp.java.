@@ -3,6 +3,8 @@ import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
 import java.util.*;
+import java.io.*;
+import java.net.*;
 
 public class QuizApp extends JFrame {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/QuizDB";
@@ -20,10 +22,15 @@ public class QuizApp extends JFrame {
     private List<Question> questions;
     private int currentIndex = 0;
     private int score = 0;
-    
+
     // Timer
     private Timer timer;
     private int timeLeft = 30;
+
+    // Network components
+    private Socket socket;
+    private ObjectInputStream input;
+    private ObjectOutputStream output;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new QuizApp().setVisible(true));
@@ -38,13 +45,14 @@ public class QuizApp extends JFrame {
 
         // Initialize UI Components
         initComponents();
-        
-        // Load questions
+
+        // Connect to server and fetch questions
+        connectToServer();
         fetchQuestions();
-        
+
         // Display first question
         displayQuestion();
-        
+
         // Center the window
         setLocationRelativeTo(null);
     }
@@ -65,7 +73,7 @@ public class QuizApp extends JFrame {
         // Options Panel
         JPanel optionsPanel = new JPanel(new GridLayout(4, 1, 10, 10));
         optionsPanel.setBorder(BorderFactory.createEmptyBorder(10, 50, 10, 50));
-        
+
         Font optionFont = new Font("Arial", Font.PLAIN, 16);
         optionA = createRadioButton("", optionFont);
         optionB = createRadioButton("", optionFont);
@@ -89,7 +97,7 @@ public class QuizApp extends JFrame {
         submitButton = new JButton("Submit");
         submitButton.setFont(new Font("Arial", Font.BOLD, 14));
         submitButton.addActionListener(e -> checkAnswer());
-        
+
         nextButton = new JButton("Next");
         nextButton.setFont(new Font("Arial", Font.BOLD, 14));
         nextButton.setEnabled(false);
@@ -111,29 +119,25 @@ public class QuizApp extends JFrame {
         return button;
     }
 
+    private void connectToServer() {
+        try {
+            // Establish connection to the server
+            socket = new Socket("localhost", 9999);
+            input = new ObjectInputStream(socket.getInputStream());
+            output = new ObjectOutputStream(socket.getOutputStream());
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Server connection error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private void fetchQuestions() {
         questions = new ArrayList<>();
-        try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASSWORD);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM questions ORDER BY RAND() LIMIT 10")) {
-
-            while (rs.next()) {
-                questions.add(new Question(
-                    rs.getString("question_text"),
-                    rs.getString("optionA"),
-                    rs.getString("optionB"),
-                    rs.getString("optionC"),
-                    rs.getString("optionD"),
-                    rs.getString("correct_option")
-                ));
-            }
-
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, 
-                "Database Error: " + e.getMessage(), 
-                "Error", 
-                JOptionPane.ERROR_MESSAGE);
-            questionLabel.setText("Failed to load questions. Please check database connection.");
+        try {
+            // Fetch questions from the server (instead of database for simplicity)
+            questions = (List<Question>) input.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            JOptionPane.showMessageDialog(this, "Error fetching questions: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            questionLabel.setText("Failed to load questions.");
             submitButton.setEnabled(false);
         }
     }
@@ -141,18 +145,18 @@ public class QuizApp extends JFrame {
     private void displayQuestion() {
         if (currentIndex < questions.size()) {
             Question q = questions.get(currentIndex);
-            questionLabel.setText("<html><div style='text-align: center;'>Question " + 
-                (currentIndex + 1) + " of " + questions.size() + "<br>" + q.text + "</div></html>");
-            
+            questionLabel.setText("<html><div style='text-align: center;'>Question " +
+                    (currentIndex + 1) + " of " + questions.size() + "<br>" + q.text + "</div></html>");
+
             optionA.setText("A. " + q.optionA);
             optionB.setText("B. " + q.optionB);
             optionC.setText("C. " + q.optionC);
             optionD.setText("D. " + q.optionD);
-            
+
             optionsGroup.clearSelection();
             nextButton.setEnabled(false);
             submitButton.setEnabled(true);
-            
+
             startTimer();
         } else {
             showFinalScore();
@@ -161,10 +165,10 @@ public class QuizApp extends JFrame {
 
     private void checkAnswer() {
         timer.stop();
-        
+
         Question q = questions.get(currentIndex);
         String selected = getSelectedOption();
-        
+
         if (selected != null) {
             boolean isCorrect = selected.equalsIgnoreCase(q.correct);
             if (isCorrect) {
@@ -176,7 +180,7 @@ public class QuizApp extends JFrame {
         } else {
             showFeedback("No answer selected!", Color.ORANGE);
         }
-        
+
         submitButton.setEnabled(false);
         nextButton.setEnabled(true);
     }
@@ -196,9 +200,9 @@ public class QuizApp extends JFrame {
 
     private void showFinalScore() {
         JOptionPane.showMessageDialog(this,
-            "Quiz Completed!\nYour Score: " + score + "/" + questions.size(),
-            "Results",
-            JOptionPane.INFORMATION_MESSAGE);
+                "Quiz Completed!\nYour Score: " + score + "/" + questions.size(),
+                "Results",
+                JOptionPane.INFORMATION_MESSAGE);
         dispose();
     }
 
@@ -206,19 +210,19 @@ public class QuizApp extends JFrame {
         timeLeft = 30;
         timerLabel.setText("Time: " + timeLeft);
         timerLabel.setForeground(Color.RED);
-        
+
         if (timer != null) {
             timer.stop();
         }
-        
+
         timer = new Timer(1000, e -> {
             timeLeft--;
             timerLabel.setText("Time: " + timeLeft);
-            
+
             if (timeLeft <= 5) {
                 timerLabel.setForeground(Color.RED.darker());
             }
-            
+
             if (timeLeft <= 0) {
                 timer.stop();
                 checkAnswer();
@@ -235,16 +239,85 @@ public class QuizApp extends JFrame {
         timerLabel.setForeground(Color.RED);
     }
 
-    static class Question {
+    static class Question implements Serializable {
         String text, optionA, optionB, optionC, optionD, correct;
-        
+
         Question(String t, String a, String b, String c, String d, String correct) {
-            this.text = t; 
-            this.optionA = a; 
+            this.text = t;
+            this.optionA = a;
             this.optionB = b;
-            this.optionC = c; 
-            this.optionD = d; 
+            this.optionC = c;
+            this.optionD = d;
             this.correct = correct;
+        }
+    }
+
+    // Server class to handle multiple clients
+    public static class QuizServer {
+        private static final int PORT = 9999;
+
+        public static void main(String[] args) {
+            try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+                System.out.println("Server started...");
+                while (true) {
+                    Socket clientSocket = serverSocket.accept();
+                    new ClientHandler(clientSocket).start();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // ClientHandler to handle multiple clients
+    static class ClientHandler extends Thread {
+        private Socket clientSocket;
+        private ObjectInputStream input;
+        private ObjectOutputStream output;
+
+        public ClientHandler(Socket socket) {
+            this.clientSocket = socket;
+        }
+
+        public void run() {
+            try {
+                input = new ObjectInputStream(clientSocket.getInputStream());
+                output = new ObjectOutputStream(clientSocket.getOutputStream());
+
+                List<Question> questions = getQuestionsFromDatabase();
+                output.writeObject(questions);
+                output.flush();
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        private List<Question> getQuestionsFromDatabase() {
+            List<Question> questions = new ArrayList<>();
+            try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASSWORD);
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM questions ORDER BY RAND() LIMIT 10")) {
+                while (rs.next()) {
+                    questions.add(new Question(
+                            rs.getString("question_text"),
+                            rs.getString("optionA"),
+                            rs.getString("optionB"),
+                            rs.getString("optionC"),
+                            rs.getString("optionD"),
+                            rs.getString("correct_option")
+                    ));
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            return questions;
         }
     }
 }
