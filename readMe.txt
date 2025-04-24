@@ -1,51 +1,65 @@
-markdown
-Copy
-# 📝 Java Quiz Application
 
-A simple yet powerful multiple-choice quiz application built with Java Swing and MySQL.
-🛠️ Setup Instructions
-1️⃣ Database Configuration
+Quiz Application
+This project contains a quiz application with an SQL database and a Java interface to display questions and track answers.
 
-1. Import the database:
-   mysql -u root -p < resources/questions.sql
-Update credentials in DBConnection.java:
-private static final String DB_URL = "jdbc:mysql://localhost:3306/QuizDB";
-private static final String USER = "root";
-private static final String PASSWORD = "your_password_here";  // Update this
-
-2️⃣ Running the Application
-
-javac -cp lib/mysql-connector-java.jar src/QuizApp.java
-
-java -cp lib/mysql-connector-java.jar:. QuizApp
-
-📂 Project Structure
-Copy
-QuizSystem/
-├── bin/                      # Compiled classes
-├── lib/
-│   └── mysql-connector-java-8.0.28.jar
+Project Structure
+quiz-app/
+│
+├── sql/
+│   ├── create_table.sql  # Create the database table
+│   └── insert_data.sql   # Insert sample quiz data
+│
 ├── src/
-│   └── QuizApp.java          # Main application file
-└── resources/
-    └── questions.sql         # Database schema + questions
+│   └── QuizApp.java      # Java application to display the quiz
+│
+└── README.md            # This file
+Prerequisites
+Database: MySQL or compatible database.
 
-⚙️ Requirements
-Java JDK 11+
-MySQL Server 8.0+
-MySQL Connector/J (included in lib/)
+Java: Ensure you have Java installed and set up.
 
-💡 Features
-Multiple-choice questions
-Database-driven content
-Simple and intuitive UI
-Score tracking
+Step 1: Set Up the Database
+Create Database:
 
-❓ Troubleshooting
-Database Issues:
-Ensure MySQL service is running
-Verify database credentials
-Check QuizDB exists (SHOW DATABASES;)
-Classpath Issues (Windows):
+CREATE DATABASE quiz_db;
+Create Table: Run create_table.sql to create the questions table.
 
-java -cp "lib/mysql-connector-java.jar;." QuizApp
+
+CREATE TABLE questions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    question_text TEXT,
+    optionA VARCHAR(255),
+    optionB VARCHAR(255),
+    optionC VARCHAR(255),
+    optionD VARCHAR(255),
+    correct_option CHAR(1)
+);
+Insert Data: Run insert_data.sql to add quiz questions.
+
+
+INSERT INTO questions (question_text, optionA, optionB, optionC, optionD, correct_option) 
+VALUES ('What is the capital of France?', 'Berlin', 'Madrid', 'Paris', 'Rome', 'C');
+Step 2: Java Application
+Install JDBC Driver: Download and add the MySQL JDBC driver to your project.
+
+Run Java Application:
+
+Compile: javac QuizApp.java
+
+Run: java QuizApp
+
+The app will display quiz questions and allow you to answer them, keeping track of your score.
+
+Step 3: Modify Quiz
+Add/Update Questions: Modify insert_data.sql and re-run.
+
+Delete Questions: Use a SQL DELETE statement:
+
+DELETE FROM questions WHERE id = 1;
+Troubleshooting
+Connection Issues: Ensure the database details in QuizApp.java are correct.
+
+Missing JDBC Driver: Add the MySQL Connector/J to your classpath.
+
+Conclusion
+This project allows users to take a quiz stored in a MySQL database. You can easily modify questions by updating the database.
