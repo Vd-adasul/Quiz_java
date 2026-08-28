@@ -1,2 +1,8 @@
-# Quiz_java
-this is a project done by : Vidhyadhar, Tejaswinee, Ashuthosh, Simran and Amisha 
+## Projects
+
+### Quiz Application — Team Project
+**Java | MySQL**
+
+A collaborative Java quiz application developed with
+Vidhyadhar, Tejaswinee, Ashuthosh, Simran and Amisha.
+)
